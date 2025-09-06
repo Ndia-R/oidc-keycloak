@@ -1,0 +1,14 @@
+# spring:
+#   security:
+#     oauth2:
+#       client:
+#         registration:
+#           keycloak:
+#             client-id: spa-gateway
+#             client-secret: your-client-secret
+#             authorization-grant-type: authorization_code
+#             redirect-uri: "{baseUrl}/auth/callback"
+#             scope: openid,profile,email
+#         provider:
+#           keycloak:
+#             issuer-uri: http://localhost:8180/realms/spa-realm
