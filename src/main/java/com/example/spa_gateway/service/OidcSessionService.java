@@ -6,7 +6,6 @@ import jakarta.servlet.http.HttpSession;
 
 @Service
 public class OidcSessionService {
-
     private static final String STATE_ATTRIBUTE = "oidc_state";
     private static final String NONCE_ATTRIBUTE = "oidc_nonce";
     private static final String CODE_VERIFIER_ATTRIBUTE = "oidc_code_verifier";

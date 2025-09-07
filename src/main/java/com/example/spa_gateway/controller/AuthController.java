@@ -15,7 +15,6 @@ import com.example.spa_gateway.service.AuthService;
 @RequestMapping("/auth-with-password")
 @RequiredArgsConstructor
 public class AuthController {
-
     private final AuthService authService;
 
     // SPA から login リクエスト
@@ -24,7 +23,6 @@ public class AuthController {
         @RequestBody LoginRequest request,
         HttpServletResponse response
     ) {
-
         // Keycloak に認証リクエスト
         TokenResponse token = authService.login(request.getEmail(), request.getPassword());
 
