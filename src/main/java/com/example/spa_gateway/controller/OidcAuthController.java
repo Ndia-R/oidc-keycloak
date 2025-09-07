@@ -54,13 +54,16 @@ public class OidcAuthController {
     public void login(HttpServletRequest request, HttpServletResponse response) throws IOException {
         HttpSession session = request.getSession();
         
-        // セキュリティのためstateとnonceを生成
+        // セキュリティのためstate、nonce、PKCEパラメータを生成
         String state = SecurityUtils.generateState();
         String nonce = SecurityUtils.generateNonce();
+        String codeVerifier = SecurityUtils.generateCodeVerifier();
+        String codeChallenge = SecurityUtils.generateCodeChallenge(codeVerifier);
         
-        // セッションにstateとnonceを保存
+        // セッションにstate、nonce、code_verifierを保存
         oidcSessionService.storeState(session, state);
         oidcSessionService.storeNonce(session, nonce);
+        oidcSessionService.storeCodeVerifier(session, codeVerifier);
         
         String authorizationEndpoint = keycloakServerUrl + "/realms/" + realm + "/protocol/openid-connect/auth";
         String url = authorizationEndpoint +
@@ -69,7 +72,9 @@ public class OidcAuthController {
             "&redirect_uri=" + redirectUri +
             "&scope=openid profile email" +
             "&state=" + state +
-            "&nonce=" + nonce;
+            "&nonce=" + nonce +
+            "&code_challenge=" + codeChallenge +
+            "&code_challenge_method=S256";
         response.sendRedirect(url);
     }
 
@@ -86,6 +91,12 @@ public class OidcAuthController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
         }
         
+        // PKCEのためcode_verifierを取得
+        String codeVerifier = oidcSessionService.getAndRemoveCodeVerifier(session);
+        if (codeVerifier == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+        
         String url = keycloakServerUrlOnDocker + "/realms/" + realm + "/protocol/openid-connect/token";
 
         HttpHeaders headers = new HttpHeaders();
@@ -97,6 +108,7 @@ public class OidcAuthController {
         body.add("client_secret", clientSecret);
         body.add("code", code);
         body.add("redirect_uri", redirectUri);
+        body.add("code_verifier", codeVerifier);
 
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<TokenResponse> response = restTemplate.postForEntity(
