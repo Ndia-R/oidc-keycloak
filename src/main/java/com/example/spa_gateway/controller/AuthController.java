@@ -29,7 +29,7 @@ public class AuthController {
         // リフレッシュトークンを HttpOnly Cookie に格納
         Cookie cookie = new Cookie("refreshToken", token.getRefreshToken());
         cookie.setHttpOnly(true);
-        cookie.setSecure(true); // HTTPS 必須
+        cookie.setSecure(true);
         cookie.setPath("/auth");
         cookie.setMaxAge(token.getRefreshExpiresIn());
         response.addCookie(cookie);
