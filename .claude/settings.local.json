@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "mcp__serena__list_dir"
+      "mcp__serena__list_dir",
+      "Bash(./gradlew:*)",
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "mcp__serena__check_onboarding_performed"
     ],
     "deny": [],
     "ask": []

@@ -12,7 +12,7 @@ import com.example.spa_gateway.dto.TokenResponse;
 import com.example.spa_gateway.service.AuthService;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping("/auth-with-password")
 @RequiredArgsConstructor
 public class AuthController {
 

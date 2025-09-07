@@ -12,3 +12,14 @@
 #         provider:
 #           keycloak:
 #             issuer-uri: http://localhost:8180/realms/spa-realm
+
+
+keycloak:
+  auth-server-url: http://localhost:8180
+  auth-server-url-on-docker: http://keycloak:8080
+  realm: spa-realm
+  client-id: spa-gateway
+  client-secret: your-client-secret
+
+app:
+  redirect-uri: http://localhost:8080/auth/callback
