@@ -52,28 +52,54 @@ docker-compose down
 ### パッケージ構造
 ```
 com.example.spa_gateway/
-├── SpaGatewayApplication.java     # メインのSpring Bootアプリケーション
+├── SpaGatewayApplication.java           # メインのSpring Bootアプリケーション
 ├── controller/
-│   └── AuthController.java       # 認証RESTエンドポイント
+│   ├── AuthController.java             # 認証RESTエンドポイント（従来）
+│   └── OidcAuthController.java         # OIDC認証エンドポイント（メイン）
 ├── service/
-│   └── AuthService.java          # 認証ビジネスロジック
+│   ├── AuthService.java                # 認証ビジネスロジック
+│   └── OidcSessionService.java         # OIDCセッション管理
+├── util/
+│   └── SecurityUtils.java              # セキュリティユーティリティ
+├── config/
+│   └── SecurityConfig.java             # Spring Security設定
 └── dto/
-    ├── LoginRequest.java         # ログインリクエスト用ペイロード
-    └── TokenResponse.java        # トークンレスポンス構造
+    ├── LoginRequest.java               # ログインリクエスト用ペイロード
+    ├── TokenResponse.java              # Keycloakトークンレスポンス
+    └── AccessTokenResponse.java        # クライアント向けレスポンス
 ```
 
 ### 認証フロー
-セキュアなトークンベース認証パターンを実装：
+OIDC Authorization Code Flow + PKCEによるセキュアな認証を実装：
 
-1. **ログインエンドポイント** (`POST /auth/login`): メール/パスワードを受け取り、Keycloakで認証、リフレッシュトークンをHttpOnly Cookieに保存し、アクセストークンをJSONで返却
-2. **リフレッシュエンドポイント** (`POST /auth/refresh`): Cookieのリフレッシュトークンを使用して新しいアクセストークンを取得
-3. **ログアウトエンドポイント** (`POST /auth/logout`): リフレッシュトークンCookieをクリア
+1. **ログイン開始** (`GET /auth/login`): 
+   - state、nonce、PKCE（code_verifier/challenge）を生成してセッションに保存
+   - Keycloak認証URLにリダイレクト
+   
+2. **認証コールバック** (`GET /auth/callback`):
+   - stateパラメータでCSRF攻撃を防止
+   - code_verifierでPKCE検証を実行
+   - 認可コードをアクセス・リフレッシュトークンに交換
+   - リフレッシュトークンをHttpOnly Cookieに保存
+   - アクセストークンのみJSONで返却
+   
+3. **トークンリフレッシュ** (`POST /auth/refresh`):
+   - Cookieからリフレッシュトークンを取得
+   - 新しいアクセストークンを取得・返却
+   - 新しいリフレッシュトークンでCookieを更新
+   
+4. **ログアウト** (`POST /auth/logout`): 
+   - リフレッシュトークンCookieを削除
 
 ### 主要なセキュリティ機能
-- リフレッシュトークン保存用HttpOnly Cookie
-- HTTPS環境向けSecureフラグ有効化
-- `/auth`パスへのCookieスコープ制限
-- 自動トークン有効期限管理
+- **OIDC準拠**: OpenID Connect Authorization Code Flowの完全実装
+- **PKCE**: Proof Key for Code Exchange による認可コード横取り攻撃対策
+- **state パラメータ**: CSRF攻撃防止
+- **nonce パラメータ**: リプレイ攻撃防止（IDトークン検証用）
+- **HttpOnly Cookie**: XSS攻撃からリフレッシュトークンを保護
+- **Secure フラグ**: HTTPS環境でのみCookie送信
+- **Cookie スコープ制限**: `/auth`パスでのみ有効
+- **自動セッション管理**: セキュリティパラメータの適切な保存・削除
 
 ## 設定
 
@@ -86,15 +112,31 @@ com.example.spa_gateway/
 レルム設定は`realm-export.json`からコンテナ起動時にインポートされます。
 
 ### アプリケーション設定
-`application.yml`のOAuth2クライアント設定は現在コメントアウトされています。アプリケーションは`AuthService`クラス経由でKeycloakトークンエンドポイントと直接統合します。
+`application.yml`のOAuth2クライアント設定は現在コメントアウトされています。アプリケーションは`OidcAuthController`経由でKeycloakと直接統合し、OIDC準拠の認証フローを実装しています。
+
+主要な設定項目：
+- `keycloak.auth-server-url`: ブラウザ向けKeycloak URL
+- `keycloak.auth-server-url-on-docker`: サーバー内部通信用URL
+- `keycloak.realm`: 使用するKeycloakレルム
+- `keycloak.client-id`: OAuth2クライアントID
+- `keycloak.client-secret`: OAuth2クライアントシークレット
+- `app.redirect-uri`: 認証後のリダイレクトURI
 
 ## 開発メモ
 
 ### パッケージ命名
 Javaのパッケージ命名制約により、本来意図していた`spa-gateway`ではなく`spa_gateway`（アンダースコア）を使用しています。
 
-### サービス実装
-`AuthService`は現在プレースホルダー実装です。本番環境では、これらのメソッドはKeycloakのトークンエンドポイントへの実際のHTTP呼び出しを行う必要があります。
+### 実装状況
+- **OidcAuthController**: 完全なOIDC Authorization Code Flow + PKCE実装済み
+- **AuthService**: プレースホルダー実装（従来の認証方式用）
+- **SecurityUtils**: セキュリティ関連のユーティリティ機能完備
+- **OidcSessionService**: セッション管理とセキュリティパラメータ検証機能実装済み
+
+### 今後の拡張予定
+- IDトークンの検証とnonce検証機能
+- Spring Securityとの統合
+- カスタム認証プロバイダーの実装
 
 ### フロントエンド統合
 `http://localhost:5173`で動作するフロントエンドアプリケーション（典型的なVite開発サーバーポート）との連携用に設定されています。

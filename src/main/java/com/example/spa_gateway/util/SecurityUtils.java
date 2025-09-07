@@ -5,6 +5,9 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
+
 public class SecurityUtils {
     
     private static final SecureRandom secureRandom = new SecureRandom();
@@ -43,5 +46,29 @@ public class SecurityUtils {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256アルゴリズムが利用できません", e);
         }
+    }
+    
+    /**
+     * セキュアなHttpOnly Cookieを設定します
+     */
+    public static void setSecureHttpOnlyCookie(HttpServletResponse response, String name, String value, int maxAge) {
+        Cookie cookie = new Cookie(name, value);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(true); // HTTPS環境でのみ送信
+        cookie.setPath("/auth"); // /authパスでのみ有効
+        cookie.setMaxAge(maxAge);
+        response.addCookie(cookie);
+    }
+    
+    /**
+     * Cookieを削除します
+     */
+    public static void deleteCookie(HttpServletResponse response, String name) {
+        Cookie cookie = new Cookie(name, "");
+        cookie.setHttpOnly(true);
+        cookie.setSecure(true);
+        cookie.setPath("/auth");
+        cookie.setMaxAge(0); // 即座に削除
+        response.addCookie(cookie);
     }
 }
