@@ -9,23 +9,23 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 
 public class SecurityUtils {
-    
+
     private static final SecureRandom secureRandom = new SecureRandom();
-    
+
     public static String generateSecureRandomString(int length) {
         byte[] randomBytes = new byte[length];
         secureRandom.nextBytes(randomBytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
     }
-    
+
     public static String generateState() {
         return generateSecureRandomString(32);
     }
-    
+
     public static String generateNonce() {
         return generateSecureRandomString(32);
     }
-    
+
     /**
      * PKCE用のcode_verifierを生成します
      * RFC 7636に従い43-128文字のURL-safeな文字列を生成
@@ -33,7 +33,7 @@ public class SecurityUtils {
     public static String generateCodeVerifier() {
         return generateSecureRandomString(32); // 43文字になる
     }
-    
+
     /**
      * code_verifierからcode_challengeを生成します
      * SHA256ハッシュ化してBase64 URL-safeエンコード
@@ -47,7 +47,7 @@ public class SecurityUtils {
             throw new RuntimeException("SHA-256アルゴリズムが利用できません", e);
         }
     }
-    
+
     /**
      * セキュアなHttpOnly Cookieを設定します
      */
@@ -59,7 +59,7 @@ public class SecurityUtils {
         cookie.setMaxAge(maxAge);
         response.addCookie(cookie);
     }
-    
+
     /**
      * Cookieを削除します
      */
