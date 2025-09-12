@@ -51,11 +51,11 @@ public class SecurityUtils {
     /**
      * セキュアなHttpOnly Cookieを設定します
      */
-    public static void setSecureHttpOnlyCookie(HttpServletResponse response, String name, String value, int maxAge) {
+    public static void setSecureHttpOnlyCookie(HttpServletResponse response, String name, String value, int maxAge, String path) {
         Cookie cookie = new Cookie(name, value);
         cookie.setHttpOnly(true);
         cookie.setSecure(true); // HTTPS環境でのみ送信
-        cookie.setPath("/auth"); // /authパスでのみ有効
+        cookie.setPath(path);
         cookie.setMaxAge(maxAge);
         response.addCookie(cookie);
     }
@@ -63,11 +63,11 @@ public class SecurityUtils {
     /**
      * Cookieを削除します
      */
-    public static void deleteCookie(HttpServletResponse response, String name) {
+    public static void deleteCookie(HttpServletResponse response, String name, String path) {
         Cookie cookie = new Cookie(name, "");
         cookie.setHttpOnly(true);
         cookie.setSecure(true);
-        cookie.setPath("/auth");
+        cookie.setPath(path);
         cookie.setMaxAge(0); // 即座に削除
         response.addCookie(cookie);
     }
