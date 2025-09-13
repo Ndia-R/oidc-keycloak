@@ -27,11 +27,14 @@ public class OidcService {
     private static final String DEFAULT_SCOPE = "openid profile email";
     private static final String PKCE_CODE_CHALLENGE_METHOD = "S256";
 
-    private final RestTemplate restTemplate = new RestTemplate();
     private final OidcSessionService oidcSessionService;
+    private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${keycloak.auth-server-url}")
     private String keycloakServerUrl;
+
+    @Value("${app.redirect-uri}")
+    private String redirectUri;
 
     @Value("${keycloak.auth-server-url-on-docker}")
     private String keycloakServerUrlOnDocker;
@@ -44,9 +47,6 @@ public class OidcService {
 
     @Value("${keycloak.client-secret}")
     private String clientSecret;
-
-    @Value("${app.redirect-uri}")
-    private String redirectUri;
 
     /**
      * 認証URLを構築する
@@ -119,15 +119,15 @@ public class OidcService {
             codeVerifier
         );
 
-        ResponseEntity<TokenResponse> tokenResponse = sendTokenRequest(requestBody);
-        TokenResponse tokens = tokenResponse.getBody();
+        ResponseEntity<TokenResponse> response = sendTokenRequest(requestBody);
+        TokenResponse tokenResponse = response.getBody();
 
-        if (tokens == null || tokens.getAccessToken() == null) {
+        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
             log.error("Keycloakから無効なトークンレスポンスを受信しました");
             throw new OidcAuthenticationException("トークン取得に失敗しました", "INVALID_TOKEN_RESPONSE");
         }
 
-        return tokens;
+        return tokenResponse;
     }
 
     /**
@@ -146,15 +146,15 @@ public class OidcService {
     public TokenResponse refreshAccessToken(String refreshToken) {
         MultiValueMap<String, String> requestBody = createRefreshTokenRequestBody(refreshToken);
 
-        ResponseEntity<TokenResponse> tokenResponse = sendTokenRequest(requestBody);
-        TokenResponse tokens = tokenResponse.getBody();
+        ResponseEntity<TokenResponse> response = sendTokenRequest(requestBody);
+        TokenResponse tokenResponse = response.getBody();
 
-        if (tokens == null || tokens.getAccessToken() == null) {
+        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
             log.error("リフレッシュ時にKeycloakから無効なトークンレスポンスを受信しました");
             throw new OidcAuthenticationException("トークンの更新に失敗しました。再度ログインしてください", "INVALID_REFRESH_RESPONSE");
         }
 
-        return tokens;
+        return tokenResponse;
     }
 
     // ========== プライベートメソッド ==========
@@ -178,7 +178,7 @@ public class OidcService {
     }
 
     /**
-     * Keycloakトークンエンドポイント用のリクエストボディを作成する（リフレッシュトークン用）
+     * リフレッシュトークン用リクエストボディを作成する
      */
     private MultiValueMap<String, String> createRefreshTokenRequestBody(String refreshToken) {
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();

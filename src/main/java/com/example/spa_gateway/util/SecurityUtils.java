@@ -7,6 +7,8 @@ import java.util.Base64;
 
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
+import com.example.spa_gateway.dto.AccessTokenResponse;
+import com.example.spa_gateway.dto.TokenResponse;
 
 public class SecurityUtils {
 
@@ -70,5 +72,26 @@ public class SecurityUtils {
         cookie.setPath(path);
         cookie.setMaxAge(0); // 即座に削除
         response.addCookie(cookie);
+    }
+
+    /**
+     * リフレッシュトークンをHttpOnly Cookieに保存します
+     */
+    public static void saveRefreshTokenToCookie(HttpServletResponse response, String tokenName, String refreshToken, int maxAge, String path) {
+        if (refreshToken != null) {
+            setSecureHttpOnlyCookie(response, tokenName, refreshToken, maxAge, path);
+        }
+    }
+
+    /**
+     * TokenResponseからAccessTokenResponseを作成します
+     */
+    public static AccessTokenResponse createAccessTokenResponse(TokenResponse tokens) {
+        return new AccessTokenResponse(
+            tokens.getAccessToken(),
+            tokens.getExpiresIn(),
+            tokens.getTokenType(),
+            tokens.getScope()
+        );
     }
 }

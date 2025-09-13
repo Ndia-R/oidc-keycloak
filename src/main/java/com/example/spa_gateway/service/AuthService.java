@@ -37,89 +37,105 @@ public class AuthService {
     @Value("${keycloak.client-secret}")
     private String clientSecret;
 
+    /**
+     * ログイン認証
+     */
     public TokenResponse login(String username, String password) {
-        log.debug("ユーザー認証開始: {}", username);
-        
-        try {
-            MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-            params.add("grant_type", "password");
-            params.add("client_id", clientId);
-            params.add("client_secret", clientSecret);
-            params.add("username", username);
-            params.add("password", password);
+        MultiValueMap<String, String> requestBody = createLoginRequestBody(username, password);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        ResponseEntity<TokenResponse> response = sendTokenRequest(requestBody);
+        TokenResponse tokenResponse = response.getBody();
 
-            String tokenUrl = buildKeycloakTokenEndpoint();
-            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
-            
-            log.debug("Keycloakトークンエンドポイントにリクエスト送信中: {}", tokenUrl);
-            ResponseEntity<TokenResponse> response = restTemplate.postForEntity(tokenUrl, request, TokenResponse.class);
+        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
+            log.error("Keycloakから無効なトークンレスポンスを受信しました");
+            throw new OidcAuthenticationException("認証に失敗しました", "INVALID_TOKEN_RESPONSE");
+        }
 
-            TokenResponse tokenResponse = response.getBody();
-            if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
-                log.error("Keycloakから無効なトークンレスポンスを受信しました");
-                throw new OidcAuthenticationException("認証に失敗しました", "INVALID_TOKEN_RESPONSE");
-            }
+        return tokenResponse;
+    }
 
-            log.debug("ユーザー認証成功: {}", username);
-            return tokenResponse;
-            
-        } catch (HttpClientErrorException ex) {
-            log.error("認証でHTTPクライアントエラー: {} - {}", ex.getStatusCode(), ex.getStatusText(), ex);
-            throw new OidcAuthenticationException("認証に失敗しました: " + ex.getStatusText(), "AUTH_FAILED", ex);
-        } catch (ResourceAccessException ex) {
-            log.error("認証サービスへの接続に失敗しました: {}", ex.getMessage(), ex);
-            throw new OidcAuthenticationException("認証サービスに接続できません", "SERVICE_UNAVAILABLE", ex);
-        } catch (Exception ex) {
-            log.error("認証リクエストに失敗しました: {}", ex.getMessage(), ex);
-            throw new OidcAuthenticationException("認証サービスとの通信に失敗しました", "AUTH_REQUEST_FAILED", ex);
+    /**
+     * リフレッシュトークンを検証する
+     */
+    public void validateRefreshToken(String refreshToken) {
+        if (refreshToken == null || refreshToken.trim().isEmpty()) {
+            log.warn("リフレッシュトークンがCookieに存在しないか空文字です");
+            throw new OidcAuthenticationException("リフレッシュトークンが見つかりません", "MISSING_REFRESH_TOKEN");
         }
     }
 
-    public TokenResponse refresh(String refreshToken) {
-        log.debug("リフレッシュトークンによるアクセストークン更新開始");
-        
-        if (refreshToken == null || refreshToken.trim().isEmpty()) {
-            log.warn("リフレッシュトークンが空文字または未設定です");
-            throw new OidcAuthenticationException("リフレッシュトークンが見つかりません", "MISSING_REFRESH_TOKEN");
+    /**
+     * リフレッシュトークンでアクセストークンを更新する
+     */
+    public TokenResponse refreshAccessToken(String refreshToken) {
+        MultiValueMap<String, String> requestBody = createRefreshTokenRequestBody(refreshToken);
+
+        ResponseEntity<TokenResponse> response = sendTokenRequest(requestBody);
+        TokenResponse tokenResponse = response.getBody();
+
+        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
+            log.error("リフレッシュ時にKeycloakから無効なトークンレスポンスを受信しました");
+            throw new OidcAuthenticationException("トークンの更新に失敗しました。再度ログインしてください", "INVALID_REFRESH_RESPONSE");
         }
-        
+
+        return tokenResponse;
+    }
+
+    // ========== プライベートメソッド ==========
+
+    /**
+     * ログイン用リクエストボディを作成する
+     */
+    private MultiValueMap<String, String> createLoginRequestBody(
+        String username,
+        String password
+    ) {
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "password");
+        body.add("client_id", clientId);
+        body.add("client_secret", clientSecret);
+        body.add("username", username);
+        body.add("password", password);
+        return body;
+    }
+
+    /**
+     * リフレッシュトークン用リクエストボディを作成する
+     */
+    private MultiValueMap<String, String> createRefreshTokenRequestBody(String refreshToken) {
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "refresh_token");
+        body.add("client_id", clientId);
+        body.add("client_secret", clientSecret);
+        body.add("refresh_token", refreshToken);
+        return body;
+    }
+
+    /**
+     * Keycloakにトークンリクエストを送信する
+     */
+    private ResponseEntity<TokenResponse> sendTokenRequest(MultiValueMap<String, String> requestBody) {
+        String url = buildKeycloakTokenEndpoint();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+
         try {
-            MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-            params.add("grant_type", "refresh_token");
-            params.add("client_id", clientId);
-            params.add("client_secret", clientSecret);
-            params.add("refresh_token", refreshToken);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-
-            String tokenUrl = buildKeycloakTokenEndpoint();
-            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
-            
-            log.debug("Keycloakリフレッシュエンドポイントにリクエスト送信中: {}", tokenUrl);
-            ResponseEntity<TokenResponse> response = restTemplate.postForEntity(tokenUrl, request, TokenResponse.class);
-
-            TokenResponse tokenResponse = response.getBody();
-            if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
-                log.error("リフレッシュ時にKeycloakから無効なトークンレスポンスを受信しました");
-                throw new OidcAuthenticationException("トークンの更新に失敗しました。再度ログインしてください", "INVALID_REFRESH_RESPONSE");
-            }
-
-            log.debug("リフレッシュトークンによる認証成功");
-            return tokenResponse;
-            
+            log.debug("Keycloakトークンエンドポイントにリクエスト送信中: {}", url);
+            return restTemplate.postForEntity(
+                url,
+                new HttpEntity<>(requestBody, headers),
+                TokenResponse.class
+            );
         } catch (HttpClientErrorException ex) {
-            log.error("リフレッシュでHTTPクライアントエラー: {} - {}", ex.getStatusCode(), ex.getStatusText(), ex);
-            throw new OidcAuthenticationException("トークン更新に失敗しました: " + ex.getStatusText(), "REFRESH_FAILED", ex);
+            log.error("トークン取得でHTTPクライアントエラー: {} - {}", ex.getStatusCode(), ex.getStatusText(), ex);
+            throw new OidcAuthenticationException("認証に失敗しました: " + ex.getStatusText(), "TOKEN_REQUEST_FAILED", ex);
         } catch (ResourceAccessException ex) {
             log.error("認証サービスへの接続に失敗しました: {}", ex.getMessage(), ex);
             throw new OidcAuthenticationException("認証サービスに接続できません", "SERVICE_UNAVAILABLE", ex);
         } catch (Exception ex) {
-            log.error("リフレッシュリクエストに失敗しました: {}", ex.getMessage(), ex);
-            throw new OidcAuthenticationException("認証サービスとの通信に失敗しました", "REFRESH_REQUEST_FAILED", ex);
+            log.error("トークン取得リクエストに失敗しました: {}", ex.getMessage(), ex);
+            throw new OidcAuthenticationException("認証サービスとの通信に失敗しました", "TOKEN_REQUEST_FAILED", ex);
         }
     }
 

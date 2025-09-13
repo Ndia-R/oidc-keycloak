@@ -10,8 +10,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import lombok.extern.slf4j.Slf4j;
-
 import com.example.spa_gateway.dto.AccessTokenResponse;
 import com.example.spa_gateway.dto.TokenResponse;
 import com.example.spa_gateway.service.OidcService;
@@ -23,7 +21,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 
-@Slf4j
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -76,12 +73,18 @@ public class OidcController {
         // トークン交換処理
         TokenResponse tokens = oidcService.exchangeCodeForTokens(code, codeVerifier);
 
-        // リフレッシュトークンを保存
-        saveRefreshTokenToCookie(response, tokens.getRefreshToken(), tokens.getRefreshExpiresIn());
+        // リフレッシュトークンを HttpOnly Cookie に格納
+        SecurityUtils.saveRefreshTokenToCookie(
+            response,
+            REFRESH_TOKEN_COOKIE_NAME,
+            tokens.getRefreshToken(),
+            tokens.getRefreshExpiresIn(),
+            COOKIE_PATH
+        );
 
         // TODO: IDトークン検証機能実装時にnonceの検証を追加
 
-        return ResponseEntity.ok(createAccessTokenResponse(tokens));
+        return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(tokens));
     }
 
     @PostMapping("/refresh")
@@ -93,12 +96,18 @@ public class OidcController {
         oidcService.validateRefreshToken(refreshToken);
 
         // トークン更新処理
-        TokenResponse tokens = oidcService.refreshAccessToken(refreshToken);
+        TokenResponse token = oidcService.refreshAccessToken(refreshToken);
 
-        // 新しいリフレッシュトークンを保存
-        saveRefreshTokenToCookie(response, tokens.getRefreshToken(), tokens.getRefreshExpiresIn());
+        // 新しいリフレッシュトークンを HttpOnly Cookie に格納
+        SecurityUtils.saveRefreshTokenToCookie(
+            response,
+            REFRESH_TOKEN_COOKIE_NAME,
+            token.getRefreshToken(),
+            token.getRefreshExpiresIn(),
+            COOKIE_PATH
+        );
 
-        return ResponseEntity.ok(createAccessTokenResponse(tokens));
+        return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(token));
     }
 
     @PostMapping("/logout")
@@ -106,34 +115,5 @@ public class OidcController {
         // リフレッシュトークンCookieを削除
         SecurityUtils.deleteCookie(response, REFRESH_TOKEN_COOKIE_NAME, COOKIE_PATH);
         return ResponseEntity.ok().build();
-    }
-
-    // ========== プライベートヘルパーメソッド ==========
-
-    /**
-     * リフレッシュトークンをHttpOnly Cookieに保存する
-     */
-    private void saveRefreshTokenToCookie(HttpServletResponse response, String refreshToken, int maxAge) {
-        if (refreshToken != null) {
-            SecurityUtils.setSecureHttpOnlyCookie(
-                response,
-                REFRESH_TOKEN_COOKIE_NAME,
-                refreshToken,
-                maxAge,
-                COOKIE_PATH
-            );
-        }
-    }
-
-    /**
-     * TokenResponseからAccessTokenResponseを作成する
-     */
-    private AccessTokenResponse createAccessTokenResponse(TokenResponse tokens) {
-        return new AccessTokenResponse(
-            tokens.getAccessToken(),
-            tokens.getExpiresIn(),
-            tokens.getTokenType(),
-            tokens.getScope()
-        );
     }
 }
