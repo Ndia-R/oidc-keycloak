@@ -20,7 +20,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -82,7 +84,14 @@ public class OidcController {
             COOKIE_PATH
         );
 
-        // TODO: IDトークン検証機能実装時にnonceの検証を追加
+        // IDトークン検証
+        String nonce = oidcSessionService.getNonce(session);
+        if (tokens.getIdToken() != null) {
+            oidcService.validateIdToken(tokens.getIdToken(), nonce);
+            log.debug("IDトークン検証完了");
+        } else {
+            log.warn("IDトークンがレスポンスに含まれていません");
+        }
 
         return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(tokens));
     }

@@ -1,16 +1,13 @@
 package com.example.spa_gateway.service;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import com.example.spa_gateway.dto.TokenResponse;
@@ -23,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final WebClient webClient = WebClient.builder().build();
 
     @Value("${keycloak.auth-server-url-on-docker}")
     private String keycloakServerUrlOnDocker;
@@ -43,8 +40,7 @@ public class AuthService {
     public TokenResponse login(String username, String password) {
         MultiValueMap<String, String> requestBody = createLoginRequestBody(username, password);
 
-        ResponseEntity<TokenResponse> response = sendTokenRequest(requestBody);
-        TokenResponse tokenResponse = response.getBody();
+        TokenResponse tokenResponse = sendTokenRequest(requestBody);
 
         if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
             log.error("Keycloakから無効なトークンレスポンスを受信しました");
@@ -70,8 +66,7 @@ public class AuthService {
     public TokenResponse refreshAccessToken(String refreshToken) {
         MultiValueMap<String, String> requestBody = createRefreshTokenRequestBody(refreshToken);
 
-        ResponseEntity<TokenResponse> response = sendTokenRequest(requestBody);
-        TokenResponse tokenResponse = response.getBody();
+        TokenResponse tokenResponse = sendTokenRequest(requestBody);
 
         if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
             log.error("リフレッシュ時にKeycloakから無効なトークンレスポンスを受信しました");
@@ -114,25 +109,21 @@ public class AuthService {
     /**
      * Keycloakにトークンリクエストを送信する
      */
-    private ResponseEntity<TokenResponse> sendTokenRequest(MultiValueMap<String, String> requestBody) {
+    private TokenResponse sendTokenRequest(MultiValueMap<String, String> requestBody) {
         String url = buildKeycloakTokenEndpoint();
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         try {
             log.debug("Keycloakトークンエンドポイントにリクエスト送信中: {}", url);
-            return restTemplate.postForEntity(
-                url,
-                new HttpEntity<>(requestBody, headers),
-                TokenResponse.class
-            );
-        } catch (HttpClientErrorException ex) {
+            return webClient.post()
+                .uri(url)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .body(BodyInserters.fromFormData(requestBody))
+                .retrieve()
+                .bodyToMono(TokenResponse.class)
+                .block();
+        } catch (WebClientResponseException ex) {
             log.error("トークン取得でHTTPクライアントエラー: {} - {}", ex.getStatusCode(), ex.getStatusText(), ex);
             throw new OidcAuthenticationException("認証に失敗しました: " + ex.getStatusText(), "TOKEN_REQUEST_FAILED", ex);
-        } catch (ResourceAccessException ex) {
-            log.error("認証サービスへの接続に失敗しました: {}", ex.getMessage(), ex);
-            throw new OidcAuthenticationException("認証サービスに接続できません", "SERVICE_UNAVAILABLE", ex);
         } catch (Exception ex) {
             log.error("トークン取得リクエストに失敗しました: {}", ex.getMessage(), ex);
             throw new OidcAuthenticationException("認証サービスとの通信に失敗しました", "TOKEN_REQUEST_FAILED", ex);
