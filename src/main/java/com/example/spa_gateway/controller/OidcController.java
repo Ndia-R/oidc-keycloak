@@ -48,6 +48,7 @@ public class OidcController {
         oidcSessionService.storeNonce(session, nonce);
         oidcSessionService.storeCodeVerifier(session, codeVerifier);
 
+        // 認証URLを構築し、リダイレクト
         String authorizationUrl = oidcService.buildAuthorizationUrl(state, nonce, codeChallenge);
         response.sendRedirect(authorizationUrl);
     }
@@ -61,8 +62,6 @@ public class OidcController {
         HttpServletRequest request,
         HttpServletResponse response
     ) {
-        HttpSession session = request.getSession();
-
         // エラーレスポンス確認
         oidcService.validateCallbackError(error, errorDescription);
 
@@ -70,10 +69,15 @@ public class OidcController {
         oidcService.validateCallbackParameters(code, state);
 
         // セキュリティ検証
+        HttpSession session = request.getSession();
         String codeVerifier = oidcService.validateSessionSecurity(session, state);
 
         // トークン交換処理
         TokenResponse tokens = oidcService.exchangeCodeForTokens(code, codeVerifier);
+
+        // IDトークン検証
+        String nonce = oidcSessionService.getNonce(session);
+        oidcService.validateIdToken(tokens.getIdToken(), nonce);
 
         // リフレッシュトークンを HttpOnly Cookie に格納
         SecurityUtils.saveRefreshTokenToCookie(
@@ -83,15 +87,6 @@ public class OidcController {
             tokens.getRefreshExpiresIn(),
             COOKIE_PATH
         );
-
-        // IDトークン検証
-        String nonce = oidcSessionService.getNonce(session);
-        if (tokens.getIdToken() != null) {
-            oidcService.validateIdToken(tokens.getIdToken(), nonce);
-            log.debug("IDトークン検証完了");
-        } else {
-            log.warn("IDトークンがレスポンスに含まれていません");
-        }
 
         return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(tokens));
     }
@@ -105,18 +100,18 @@ public class OidcController {
         oidcService.validateRefreshToken(refreshToken);
 
         // トークン更新処理
-        TokenResponse token = oidcService.refreshAccessToken(refreshToken);
+        TokenResponse tokens = oidcService.refreshAccessToken(refreshToken);
 
         // 新しいリフレッシュトークンを HttpOnly Cookie に格納
         SecurityUtils.saveRefreshTokenToCookie(
             response,
             REFRESH_TOKEN_COOKIE_NAME,
-            token.getRefreshToken(),
-            token.getRefreshExpiresIn(),
+            tokens.getRefreshToken(),
+            tokens.getRefreshExpiresIn(),
             COOKIE_PATH
         );
 
-        return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(token));
+        return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(tokens));
     }
 
     @PostMapping("/logout")

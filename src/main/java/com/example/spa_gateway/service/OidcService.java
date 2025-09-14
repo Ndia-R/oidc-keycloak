@@ -40,15 +40,15 @@ public class OidcService {
     private static final String DEFAULT_SCOPE = "openid profile email";
     private static final String PKCE_CODE_CHALLENGE_METHOD = "S256";
 
-    private final OidcSessionService oidcSessionService;
     private final WebClient webClient = WebClient.builder().build();
+    private final OidcSessionService oidcSessionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Value("${keycloak.auth-server-url}")
-    private String keycloakServerUrl;
 
     @Value("${app.redirect-uri}")
     private String redirectUri;
+
+    @Value("${keycloak.auth-server-url}")
+    private String keycloakServerUrl;
 
     @Value("${keycloak.auth-server-url-on-docker}")
     private String keycloakServerUrlOnDocker;
@@ -61,6 +61,8 @@ public class OidcService {
 
     @Value("${keycloak.client-secret}")
     private String clientSecret;
+
+    // ========== 認証フロー：ログイン開始 ==========
 
     /**
      * 認証URLを構築する
@@ -79,6 +81,8 @@ public class OidcService {
             .build()
             .toUriString();
     }
+
+    // ========== 認証フロー：コールバック処理 ==========
 
     /**
      * コールバックエラーを検証する
@@ -123,6 +127,8 @@ public class OidcService {
         return codeVerifier;
     }
 
+    // ========== 認証フロー：トークン取得・検証 ==========
+
     /**
      * 認可コードをトークンに交換する
      */
@@ -133,15 +139,54 @@ public class OidcService {
             codeVerifier
         );
 
-        TokenResponse tokenResponse = sendTokenRequest(requestBody);
+        TokenResponse tokens = sendTokenRequest(requestBody);
 
-        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
+        if (tokens == null || tokens.getAccessToken() == null) {
             log.error("Keycloakから無効なトークンレスポンスを受信しました");
             throw new OidcAuthenticationException("トークン取得に失敗しました", "INVALID_TOKEN_RESPONSE");
         }
 
-        return tokenResponse;
+        if (tokens.getIdToken() == null) {
+            log.error("KeycloakからIDトークンが返却されませんでした");
+            throw new OidcAuthenticationException("IDトークン取得に失敗しました", "MISSING_ID_TOKEN_RESPONSE");
+        }
+
+        return tokens;
     }
+
+    /**
+     * IDトークンを検証する
+     */
+    public void validateIdToken(String idToken, String nonce) {
+        if (idToken == null || idToken.trim().isEmpty()) {
+            log.warn("IDトークンがnullまたは空文字です");
+            throw new OidcAuthenticationException("IDトークンが見つかりません", "MISSING_ID_TOKEN");
+        }
+
+        try {
+            DecodedJWT verifiedJWT = decodeAndVerifyJwt(idToken);
+            validateTokenClaims(verifiedJWT, nonce);
+            validateTokenExpiration(verifiedJWT);
+
+            log.info(
+                "IDトークン検証完了: subject={}, nonce={}",
+                verifiedJWT.getSubject(),
+                verifiedJWT.getClaim("nonce").asString()
+            );
+
+        } catch (JWTDecodeException ex) {
+            log.error("IDトークンのデコードに失敗しました: {}", ex.getMessage(), ex);
+            throw new OidcAuthenticationException("IDトークンの形式が無効です", "INVALID_ID_TOKEN_FORMAT", ex);
+        } catch (JWTVerificationException ex) {
+            log.error("IDトークンの検証に失敗しました: {}", ex.getMessage(), ex);
+            throw new OidcAuthenticationException("IDトークンの検証に失敗しました", "ID_TOKEN_VERIFICATION_FAILED", ex);
+        } catch (Exception ex) {
+            log.error("IDトークン検証中に予期しないエラーが発生しました: {}", ex.getMessage(), ex);
+            throw new OidcAuthenticationException("IDトークン検証に失敗しました", "ID_TOKEN_VALIDATION_ERROR", ex);
+        }
+    }
+
+    // ========== 認証フロー：リフレッシュ処理 ==========
 
     /**
      * リフレッシュトークンを検証する
@@ -159,71 +204,62 @@ public class OidcService {
     public TokenResponse refreshAccessToken(String refreshToken) {
         MultiValueMap<String, String> requestBody = createRefreshTokenRequestBody(refreshToken);
 
-        TokenResponse tokenResponse = sendTokenRequest(requestBody);
+        TokenResponse tokens = sendTokenRequest(requestBody);
 
-        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
+        if (tokens == null || tokens.getAccessToken() == null) {
             log.error("リフレッシュ時にKeycloakから無効なトークンレスポンスを受信しました");
             throw new OidcAuthenticationException("トークンの更新に失敗しました。再度ログインしてください", "INVALID_REFRESH_RESPONSE");
         }
 
-        return tokenResponse;
+        return tokens;
+    }
+
+    // ========== IDトークン検証のプライベートメソッド ==========
+
+    /**
+     * JWTをデコードして署名検証を行う
+     */
+    private DecodedJWT decodeAndVerifyJwt(String idToken) {
+        // JWTデコード（署名検証前の基本チェック）
+        DecodedJWT jwt = JWT.decode(idToken);
+
+        // 公開鍵を取得してJWT署名検証
+        RSAPublicKey publicKey = getKeycloakPublicKey(jwt.getKeyId());
+        Algorithm algorithm = Algorithm.RSA256(publicKey, null);
+        JWTVerifier verifier = JWT.require(algorithm)
+            .withIssuer(keycloakServerUrl + "/realms/" + realm)
+            .withAudience(clientId)
+            .build();
+
+        DecodedJWT verifiedJWT = verifier.verify(idToken);
+
+        return verifiedJWT;
     }
 
     /**
-     * IDトークンを検証する
+     * トークンのclaim（nonce等）を検証する
      */
-    public void validateIdToken(String idToken, String nonce) {
-        if (idToken == null || idToken.trim().isEmpty()) {
-            log.warn("IDトークンがnullまたは空文字です");
-            throw new OidcAuthenticationException("IDトークンが見つかりません", "MISSING_ID_TOKEN");
-        }
-
-        try {
-            // 1. JWTデコード（署名検証前の基本チェック）
-            DecodedJWT jwt = JWT.decode(idToken);
-            log.debug("IDトークンデコード成功");
-
-            // 2. 公開鍵を取得してJWT署名検証
-            RSAPublicKey publicKey = getKeycloakPublicKey(jwt.getKeyId());
-            Algorithm algorithm = Algorithm.RSA256(publicKey, null);
-            JWTVerifier verifier = JWT.require(algorithm)
-                .withIssuer(keycloakServerUrlOnDocker + "/realms/" + realm)
-                .withAudience(clientId)
-                .build();
-
-            DecodedJWT verifiedJWT = verifier.verify(idToken);
-            log.debug("IDトークン署名検証成功");
-
-            // 3. nonce検証
-            String tokenNonce = verifiedJWT.getClaim("nonce").asString();
-            if (nonce == null || !nonce.equals(tokenNonce)) {
-                log.error("nonce検証失敗: expected={}, actual={}", nonce, tokenNonce);
-                throw new OidcAuthenticationException("IDトークンのnonce検証に失敗しました", "INVALID_NONCE");
-            }
-
-            // 4. 有効期限検証（JWTVerifierで自動検証されるが、ログ出力）
-            Date expiresAt = verifiedJWT.getExpiresAt();
-            Date now = new Date();
-            if (expiresAt.before(now)) {
-                log.error("IDトークンの有効期限切れ: expiresAt={}, now={}", expiresAt, now);
-                throw new OidcAuthenticationException("IDトークンの有効期限が切れています", "TOKEN_EXPIRED");
-            }
-
-            log.info("IDトークン検証完了: subject={}, nonce={}", verifiedJWT.getSubject(), tokenNonce);
-
-        } catch (JWTDecodeException ex) {
-            log.error("IDトークンのデコードに失敗しました: {}", ex.getMessage(), ex);
-            throw new OidcAuthenticationException("IDトークンの形式が無効です", "INVALID_ID_TOKEN_FORMAT", ex);
-        } catch (JWTVerificationException ex) {
-            log.error("IDトークンの検証に失敗しました: {}", ex.getMessage(), ex);
-            throw new OidcAuthenticationException("IDトークンの検証に失敗しました", "ID_TOKEN_VERIFICATION_FAILED", ex);
-        } catch (Exception ex) {
-            log.error("IDトークン検証中に予期しないエラーが発生しました: {}", ex.getMessage(), ex);
-            throw new OidcAuthenticationException("IDトークン検証に失敗しました", "ID_TOKEN_VALIDATION_ERROR", ex);
+    private void validateTokenClaims(DecodedJWT jwt, String expectedNonce) {
+        String tokenNonce = jwt.getClaim("nonce").asString();
+        if (expectedNonce == null || !expectedNonce.equals(tokenNonce)) {
+            log.error("nonce検証失敗: expected={}, actual={}", expectedNonce, tokenNonce);
+            throw new OidcAuthenticationException("IDトークンのnonce検証に失敗しました", "INVALID_NONCE");
         }
     }
 
-    // ========== プライベートメソッド ==========
+    /**
+     * トークンの有効期限を検証する
+     */
+    private void validateTokenExpiration(DecodedJWT jwt) {
+        Date expiresAt = jwt.getExpiresAt();
+        Date now = new Date();
+        if (expiresAt.before(now)) {
+            log.error("IDトークンの有効期限切れ: expiresAt={}, now={}", expiresAt, now);
+            throw new OidcAuthenticationException("IDトークンの有効期限が切れています", "TOKEN_EXPIRED");
+        }
+    }
+
+    // ========== トークンリクエストのプライベートメソッド ==========
 
     /**
      * Keycloakトークンエンドポイント用のリクエストボディを作成する（認可コード用）
@@ -262,7 +298,6 @@ public class OidcService {
         String url = buildKeycloakTokenEndpoint();
 
         try {
-            log.debug("Keycloakトークンエンドポイントにリクエスト送信中: {}", url);
             return webClient.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
@@ -298,8 +333,6 @@ public class OidcService {
                 .pathSegment("realms", realm, "protocol", "openid-connect", "certs")
                 .build()
                 .toUriString();
-
-            log.debug("JWKS URI: {}", jwksUri);
 
             // JWKSエンドポイントから公開鍵情報を取得
             String jwksResponse = webClient.get()

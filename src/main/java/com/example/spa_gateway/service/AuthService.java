@@ -40,14 +40,14 @@ public class AuthService {
     public TokenResponse login(String username, String password) {
         MultiValueMap<String, String> requestBody = createLoginRequestBody(username, password);
 
-        TokenResponse tokenResponse = sendTokenRequest(requestBody);
+        TokenResponse tokens = sendTokenRequest(requestBody);
 
-        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
+        if (tokens == null || tokens.getAccessToken() == null) {
             log.error("Keycloakから無効なトークンレスポンスを受信しました");
             throw new OidcAuthenticationException("認証に失敗しました", "INVALID_TOKEN_RESPONSE");
         }
 
-        return tokenResponse;
+        return tokens;
     }
 
     /**
@@ -66,14 +66,14 @@ public class AuthService {
     public TokenResponse refreshAccessToken(String refreshToken) {
         MultiValueMap<String, String> requestBody = createRefreshTokenRequestBody(refreshToken);
 
-        TokenResponse tokenResponse = sendTokenRequest(requestBody);
+        TokenResponse tokens = sendTokenRequest(requestBody);
 
-        if (tokenResponse == null || tokenResponse.getAccessToken() == null) {
+        if (tokens == null || tokens.getAccessToken() == null) {
             log.error("リフレッシュ時にKeycloakから無効なトークンレスポンスを受信しました");
             throw new OidcAuthenticationException("トークンの更新に失敗しました。再度ログインしてください", "INVALID_REFRESH_RESPONSE");
         }
 
-        return tokenResponse;
+        return tokens;
     }
 
     // ========== プライベートメソッド ==========
@@ -113,7 +113,6 @@ public class AuthService {
         String url = buildKeycloakTokenEndpoint();
 
         try {
-            log.debug("Keycloakトークンエンドポイントにリクエスト送信中: {}", url);
             return webClient.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)

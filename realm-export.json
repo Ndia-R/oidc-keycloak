@@ -14,7 +14,10 @@
       "enabled": true,
       "publicClient": false,
       "secret": "your-client-secret",
-      "redirectUris": ["http://localhost:5173/*"],
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8080/auth/callback"
+      ],
       "protocol": "openid-connect",
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
@@ -26,6 +29,18 @@
   "users": [
     {
       "username": "testuser",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "emailVerified": true
+    },
+    {
+      "username": "testuser2",
       "enabled": true,
       "credentials": [
         {

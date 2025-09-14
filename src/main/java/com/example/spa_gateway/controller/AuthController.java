@@ -27,18 +27,18 @@ public class AuthController {
         HttpServletResponse response
     ) {
         // Keycloak に認証リクエスト
-        TokenResponse token = authService.login(request.getEmail(), request.getPassword());
+        TokenResponse tokens = authService.login(request.getEmail(), request.getPassword());
 
         // リフレッシュトークンを HttpOnly Cookie に格納
         SecurityUtils.saveRefreshTokenToCookie(
             response,
             REFRESH_TOKEN_COOKIE_NAME,
-            token.getRefreshToken(),
-            token.getRefreshExpiresIn(),
+            tokens.getRefreshToken(),
+            tokens.getRefreshExpiresIn(),
             COOKIE_PATH
         );
 
-        return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(token));
+        return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(tokens));
     }
 
     @PostMapping("/refresh")
@@ -50,18 +50,18 @@ public class AuthController {
         authService.validateRefreshToken(refreshToken);
 
         // トークン更新処理
-        TokenResponse token = authService.refreshAccessToken(refreshToken);
+        TokenResponse tokens = authService.refreshAccessToken(refreshToken);
 
         // 新しいリフレッシュトークンを HttpOnly Cookie に格納
         SecurityUtils.saveRefreshTokenToCookie(
             response,
             REFRESH_TOKEN_COOKIE_NAME,
-            token.getRefreshToken(),
-            token.getRefreshExpiresIn(),
+            tokens.getRefreshToken(),
+            tokens.getRefreshExpiresIn(),
             COOKIE_PATH
         );
 
-        return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(token));
+        return ResponseEntity.ok(SecurityUtils.createAccessTokenResponse(tokens));
     }
 
     @PostMapping("/logout")

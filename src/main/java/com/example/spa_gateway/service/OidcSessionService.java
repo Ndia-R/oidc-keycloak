@@ -10,12 +10,10 @@ public class OidcSessionService {
     private static final String NONCE_ATTRIBUTE = "oidc_nonce";
     private static final String CODE_VERIFIER_ATTRIBUTE = "oidc_code_verifier";
 
+    // state関連
+
     public void storeState(HttpSession session, String state) {
         session.setAttribute(STATE_ATTRIBUTE, state);
-    }
-
-    public void storeNonce(HttpSession session, String nonce) {
-        session.setAttribute(NONCE_ATTRIBUTE, nonce);
     }
 
     public String getAndRemoveState(HttpSession session) {
@@ -24,20 +22,22 @@ public class OidcSessionService {
         return state;
     }
 
-    public String getAndRemoveNonce(HttpSession session) {
-        String nonce = (String) session.getAttribute(NONCE_ATTRIBUTE);
-        session.removeAttribute(NONCE_ATTRIBUTE);
-        return nonce;
-    }
-
     public boolean validateState(HttpSession session, String receivedState) {
         String storedState = getAndRemoveState(session);
         return storedState != null && storedState.equals(receivedState);
     }
 
+    // nonce関連
+
+    public void storeNonce(HttpSession session, String nonce) {
+        session.setAttribute(NONCE_ATTRIBUTE, nonce);
+    }
+
     public String getNonce(HttpSession session) {
         return (String) session.getAttribute(NONCE_ATTRIBUTE);
     }
+
+    // PKCE Code Verifier関連
 
     public void storeCodeVerifier(HttpSession session, String codeVerifier) {
         session.setAttribute(CODE_VERIFIER_ATTRIBUTE, codeVerifier);

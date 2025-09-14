@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 このファイルは、Claude Code (claude.ai/code) がこのリポジトリでコードを操作する際のガイダンスを提供します。
 
 # 重要
@@ -47,6 +49,9 @@ docker-compose logs -f keycloak
 
 # サービス停止
 docker-compose down
+
+# Dockerコンテナ内でビルド・実行
+docker exec -it <container-name> ./gradlew bootRun
 ```
 
 ## アーキテクチャ
@@ -183,3 +188,9 @@ Javaのパッケージ命名制約により、本来意図していた`spa-gatew
 - `POST /auth-with-password/login` - メール・パスワードログイン
 - `POST /auth-with-password/refresh` - アクセストークンリフレッシュ
 - `POST /auth-with-password/logout` - ログアウト
+
+## 重要なファイル
+- `realm-export.json`: Keycloakレルム設定ファイル（コンテナ起動時に自動インポート）
+- `docker-compose.yml`: 開発環境設定（Keycloak + アプリケーション）
+- `build.gradle`: プロジェクト依存関係とビルド設定
+- `application.yml`: アプリケーション設定（Keycloak統合情報）
